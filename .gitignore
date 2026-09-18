@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Generated outputs
+overlay.html
+*.log
+
+# Fixtures that are not redistributed (see tests/data/README.md)
+tests/data/experimental/
+tests/data/csd_families/
+tests/data/predicted/*
+!tests/data/predicted/CAPRYL_seed*_sample_0.cif
+!tests/data/predicted/RUSXEM_seed0_sample_0.cif
+!tests/data/predicted/XAFQON_seed0_sample_0.cif
+
+# Resolved by CI and by `pip install`; not pinned for a library
+uv.lock
+
+# Local scratch work
+scratch/
+
+# Local secrets
+.env

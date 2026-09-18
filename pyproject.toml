@@ -1,0 +1,59 @@
+[project]
+name = "oxtalign"
+version = "0.1.0"
+description = "OXtalign: fast, open RMSD_n crystal-packing similarity for molecular crystals"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+keywords = ["crystallography", "crystal-structure-prediction", "polymorph", "packing-similarity", "RMSD", "COMPACK", "CIF"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "gemmi>=0.6",
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.6"]
+viz = ["matplotlib>=3.8"]        # only for benchmark/plot_figures.py
+
+[project.urls]
+Homepage = "https://github.com/OXtal/oxtalign"
+Repository = "https://github.com/OXtal/oxtalign"
+Issues = "https://github.com/OXtal/oxtalign/issues"
+Paper = "https://arxiv.org/abs/2512.06987"
+
+[project.scripts]
+oxtalign = "oxtalign.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oxtalign"]
+
+[tool.hatch.build.targets.sdist]
+# the sdist carries the library, its tests and METHOD.md; the rendered figures (4 MB) and the
+# COMPACK benchmark live in the repository only
+exclude = ["benchmark", ".github", "docs/figures", "docs/social", ".env", "scratch"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E741"]   # ambiguous names (l, I) are fine for short math locals
+
+[tool.ruff.lint.per-file-ignores]
+"benchmark/*" = ["E501"]

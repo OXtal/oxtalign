@@ -1,0 +1,272 @@
+<title>Crystal Packing Overlay</title>
+<style>
+  :root {
+    --panel: rgba(20,25,36,0.90); --line: #2a3242; --text: #e8edf5; --muted: #93a0b6;
+    --green: #46d07a; --grey: #707a8c; --red: #f85a52; --a: #5aa9ff; --b: #ff9d4a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #0a0c12; color: var(--text); overflow: hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas:active { cursor: grabbing; }
+  .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 270px; max-width: calc(100vw - 32px);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 13px;
+    padding: 15px 16px 13px; backdrop-filter: blur(10px);
+    box-shadow: 0 10px 34px rgba(0,0,0,0.5); font-size: 13px;
+  }
+  #panel h1 { font-size: 13.5px; margin: 0 0 2px; letter-spacing: .2px; font-weight: 600; }
+  #sub { color: var(--muted); font-size: 10.5px; margin: 0 0 12px; word-break: break-all; line-height:1.4; }
+  .stat-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .stat { flex: 1; background: rgba(0,0,0,0.28); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; }
+  .stat .k { color: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; }
+  .stat .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
+  .badge.full { background: rgba(70,208,122,.16); color: var(--green); }
+  .badge.partial { background: rgba(255,157,74,.18); color: var(--b); }
+  .badge.failed { background: rgba(248,90,82,.16); color: #f85a52; }
+
+  hr.sep { border: none; border-top: 1px solid var(--line); margin: 11px 0; }
+  .ctl { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+  .ctl label { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .ring { width: 11px; height: 11px; border-radius: 50%; flex: none; box-sizing: border-box; }
+  .switch { position: relative; width: 34px; height: 19px; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .track { position: absolute; inset: 0; background: #2c3340; border-radius: 999px; transition: background .15s; pointer-events: none; }
+  .track::after { content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; background:#fff; border-radius:50%; transition: transform .15s; }
+  .switch input:checked + .track { background: var(--a); }
+  .switch input:checked + .track::after { transform: translateX(15px); }
+
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-top: 2px; }
+  .seg button { flex: 1; background: transparent; color: var(--muted); border: none; padding: 6px 0;
+    font: inherit; font-size: 12px; cursor: pointer; transition: background .12s, color .12s; }
+  .seg button.on { background: rgba(90,169,255,.18); color: var(--text); }
+  .rowlbl { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing:.5px; margin: 2px 0 0; }
+  .btns { display: flex; gap: 8px; margin-top: 10px; }
+  .btns button { flex:1; background: rgba(0,0,0,0.28); color: var(--text); border:1px solid var(--line);
+    border-radius: 8px; padding: 7px 0; font: inherit; font-size: 12px; cursor: pointer; }
+  .btns button:hover { border-color: var(--a); }
+  .legend { font-size: 11px; color: var(--muted); }
+  .legend .item { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .hint { color: var(--muted); font-size: 10px; margin-top: 11px; line-height: 1.5; }
+  #msg { color: var(--b); font-size: 11px; margin-top: 8px; }
+</style>
+
+<div id="stage"><canvas id="cv"></canvas></div>
+
+<div id="panel">
+  <h1>Packing overlay</h1>
+  <p id="sub" class="mono"></p>
+  <div class="stat-row">
+    <div class="stat"><div class="k">RMSD<sub>n</sub></div><div class="v mono" id="v-rmsd">–</div></div>
+    <div class="stat"><div class="k">matched</div><div class="v mono" id="v-matched">–</div></div>
+  </div>
+  <div style="margin-bottom:4px"><span class="badge" id="v-status"></span>
+    <span id="v-inv" style="color:var(--muted);font-size:11px;margin-left:6px"></span></div>
+
+  <hr class="sep">
+  <p class="rowlbl">Color by</p>
+  <div class="seg" id="seg-color">
+    <button data-mode="match" class="on">Match</button><button data-mode="ab">A / B</button>
+  </div>
+
+  <hr class="sep">
+  <div class="ctl"><label><span class="swatch" id="sw-a" style="background:#9aa6b8"></span> Structure A (reference)</label>
+    <span class="switch"><input type="checkbox" id="t-a" checked><span class="track"></span></span></div>
+  <div class="ctl"><label><span class="ring" id="sw-b" style="border:2px solid var(--green)"></span> Structure B (overlay)</label>
+    <span class="switch"><input type="checkbox" id="t-b" checked><span class="track"></span></span></div>
+  <div class="ctl"><label><span class="swatch" style="background:var(--green)"></span> Matched only</label>
+    <span class="switch"><input type="checkbox" id="t-matched"><span class="track"></span></span></div>
+  <div class="ctl" id="ctl-cell" style="display:none"><label><span class="swatch" style="background:transparent;border:1px solid var(--muted)"></span> Unit cell</label>
+    <span class="switch"><input type="checkbox" id="t-cell"><span class="track"></span></span></div>
+
+  <div class="btns">
+    <button id="b-reset">Reset view</button><button id="b-spin">Pause spin</button>
+  </div>
+
+  <hr class="sep">
+  <div class="legend" id="legend"></div>
+  <p id="msg"></p>
+  <p class="hint">Drag to rotate &middot; scroll to zoom &middot; A = colour reference, B = green where matched (grey where not)</p>
+</div>
+
+<script>
+"use strict";
+const DATA = /*__OVERLAY_JSON__*/ {"rmsd_n":null,"n":0,"n_matched":0,"status":"failed","inverted":false,"a_source":"(no data)","b_source":"(no data)","molecules":[]} /*__END__*/;
+
+const A_COL = [90,169,255], B_COL = [255,157,74], MATCH = [74,206,122],
+      DGREY = [117,125,140], BEIGE = [217,212,194];
+const CPK = {
+  H:[235,235,240], C:[90,100,112], N:[60,100,248], O:[255,70,60], S:[235,205,55],
+  F:[130,225,130], Cl:[70,210,100], Br:[170,90,50], I:[155,40,210], P:[255,150,45],
+  B:[255,185,175], Si:[200,170,140], Na:[170,95,240], K:[140,65,230], Ca:[70,215,70],
+  Mg:[150,235,55], Fe:[225,110,40], Zn:[130,140,160], Cu:[205,128,70], Ni:[90,205,150],
+  Mn:[160,128,205], Co:[110,128,225], Pt:[205,210,220], Pd:[40,140,165], Au:[255,215,55],
+  Ag:[198,198,215], Al:[195,195,205], Ti:[145,155,165], Se:[255,165,10], Dy:[120,255,200],
+  Ru:[60,180,160], Cd:[255,216,155], Y:[150,255,235]
+};
+const ELEM_R = { H:0.34, C:0.72, N:0.66, O:0.62, S:1.02, P:1.02, F:0.57, Cl:0.99,
+  Br:1.14, I:1.33, B:0.84, Dy:1.4, Ru:1.3, Fe:1.3, Co:1.26, Cd:1.4 };
+const elemColor = e => CPK[e] || [155,155,160];
+const elemRadius = e => ELEM_R[e] || (CPK[e] ? 0.80 : 0.86);
+const mix = (c,d,t) => [c[0]+(d[0]-c[0])*t, c[1]+(d[1]-c[1])*t, c[2]+(d[2]-c[2])*t];
+const rgba = (c,a) => "rgba("+(c[0]|0)+","+(c[1]|0)+","+(c[2]|0)+","+a+")";
+
+// ---- Flatten molecules into atoms + bonds ------------------------------
+const atoms = [], bonds = [], allPts = [];
+DATA.molecules.forEach((m, mi) => {
+  const base = atoms.length, role = m.role, matched = !!m.matched;
+  m.coords.forEach((c, ai) => { atoms.push({ p:c, el:m.elements[ai], role, matched }); allPts.push(c); });
+  (m.bonds||[]).forEach(([i,j]) => bonds.push({ a:base+i, b:base+j, role, matched }));
+});
+// ---- Unit cells: origin + a,b,c -> 8 corners, 12 edges -----------------
+function cellCorners(cell){
+  const O=cell.origin,a=cell.a,b=cell.b,c=cell.c, cn=[];
+  for(let i=0;i<8;i++){ const u=i&1,v=(i>>1)&1,w=(i>>2)&1;
+    cn.push([O[0]+u*a[0]+v*b[0]+w*c[0], O[1]+u*a[1]+v*b[1]+w*c[1], O[2]+u*a[2]+v*b[2]+w*c[2]]); }
+  return cn;
+}
+const CELL_EDGES = []; for(let i=0;i<8;i++) for(let bit=0;bit<3;bit++){ const j=i^(1<<bit); if(i<j) CELL_EDGES.push([i,j]); }
+const cells = [];
+if (DATA.cell_a){ const cn=cellCorners(DATA.cell_a); cells.push({corners:cn,col:A_COL}); cn.forEach(p=>allPts.push(p)); }
+if (DATA.cell_b){ const cn=cellCorners(DATA.cell_b); cells.push({corners:cn,col:B_COL}); cn.forEach(p=>allPts.push(p)); }
+
+// ---- Center & scale around all geometry --------------------------------
+let center=[0,0,0], radius=1;
+if (allPts.length){
+  allPts.forEach(c=>{center[0]+=c[0];center[1]+=c[1];center[2]+=c[2];});
+  center=center.map(v=>v/allPts.length);
+  allPts.forEach(c=>{ radius=Math.max(radius, Math.hypot(c[0]-center[0],c[1]-center[1],c[2]-center[2])); });
+}
+
+// ---- Panel -------------------------------------------------------------
+const $ = id => document.getElementById(id);
+$("sub").textContent = (DATA.a_source||"A").split("/").pop() + "  vs  " + (DATA.b_source||"B").split("/").pop();
+$("v-rmsd").textContent = (DATA.rmsd_n==null) ? "–" : Number(DATA.rmsd_n).toFixed(3)+" Å";
+$("v-matched").textContent = DATA.n_matched+" / "+DATA.n;
+const st=$("v-status"); st.textContent=DATA.status||"?"; st.classList.add(DATA.status||"failed");
+$("v-inv").textContent = DATA.inverted ? "mirror overlay" : "proper overlay";
+if (DATA.message) $("msg").textContent = DATA.message;
+if (cells.length) $("ctl-cell").style.display = "flex";
+
+let colorMode="match", show={a:true,b:true,matchedOnly:false,cell:false};
+function renderLegend(){
+  const L=$("legend"); const dot=c=>'<span class="dot" style="background:'+rgba(c,1)+'"></span>';
+  if (colorMode==="match"){
+    L.innerHTML = '<div class="item">'+dot(CPK.N)+dot(CPK.O)+dot(CPK.S)+'&nbsp; CPK by element</div>'
+      + '<div class="item">'+dot(MATCH)+'matched &nbsp;·&nbsp; unmatched '+dot(mix(CPK.O,DGREY,0.5))+'A '+dot(mix(CPK.O,BEIGE,0.6))+'B</div>';
+  } else {
+    L.innerHTML = '<div class="item">'+dot(A_COL)+'structure A &nbsp;·&nbsp;'+dot(B_COL)+'&nbsp;structure B</div>';
+  }
+  if (cells.length) L.innerHTML += '<div class="item"><span style="width:14px;border-top:1px dashed '+rgba(A_COL,.9)+'"></span>A cell &nbsp; <span style="width:14px;border-top:1px dashed '+rgba(B_COL,.9)+'"></span>B cell</div>';
+}
+renderLegend();
+
+// ---- 3D math -----------------------------------------------------------
+const cv=$("cv"), ctx=cv.getContext("2d");
+let rot=ident(), scale=1, dpr=1;
+function ident(){ return [1,0,0,0,1,0,0,0,1]; }
+function mul(A,B){ const C=new Array(9); for(let r=0;r<3;r++)for(let c=0;c<3;c++){let s=0;for(let k=0;k<3;k++)s+=A[r*3+k]*B[k*3+c];C[r*3+c]=s;} return C; }
+function rotX(a){const c=Math.cos(a),s=Math.sin(a);return [1,0,0,0,c,-s,0,s,c];}
+function rotY(a){const c=Math.cos(a),s=Math.sin(a);return [c,0,s,0,1,0,-s,0,c];}
+const ap = p => [rot[0]*p[0]+rot[1]*p[1]+rot[2]*p[2], rot[3]*p[0]+rot[4]*p[1]+rot[5]*p[2], rot[6]*p[0]+rot[7]*p[1]+rot[8]*p[2]];
+
+function resize(){ dpr=Math.min(window.devicePixelRatio||1,2); cv.width=Math.floor(cv.clientWidth*dpr); cv.height=Math.floor(cv.clientHeight*dpr); draw(); }
+window.addEventListener("resize", resize);
+
+function atomFill(at){
+  if (colorMode==="ab") return at.role==="A" ? A_COL : B_COL;
+  if (at.matched) return at.role==="A" ? elemColor(at.el) : MATCH;  // matched: A full CPK, B green
+  // unmatched: desaturated element colour; A toward cool grey, B toward warm beige (so A vs B differ)
+  return at.role==="A" ? mix(elemColor(at.el), DGREY, 0.6) : mix(elemColor(at.el), BEIGE, 0.68);
+}
+const vis = at => (at.role==="A"?show.a:show.b) && !(show.matchedOnly && !at.matched);
+
+function draw(){
+  const W=cv.width, H=cv.height; const g0=ctx.createRadialGradient(W/2,H*0.42,0,W/2,H/2,Math.hypot(W,H)/1.5);
+  g0.addColorStop(0,"#161b2c"); g0.addColorStop(1,"#080a10"); ctx.fillStyle=g0; ctx.fillRect(0,0,W,H);
+  if(!atoms.length) return;
+  const cx=W/2, cy=H/2, fit=(Math.min(W,H)*0.42)/radius*scale;
+  const proj = atoms.map(a=>{ const q=ap([a.p[0]-center[0],a.p[1]-center[1],a.p[2]-center[2]]); return {sx:cx+q[0]*fit, sy:cy-q[1]*fit, z:q[2]}; });
+  let zmin=Infinity,zmax=-Infinity; proj.forEach(p=>{if(p.z<zmin)zmin=p.z;if(p.z>zmax)zmax=p.z;});
+  const zspan=(zmax-zmin)||1, depth=z=>(z-zmin)/zspan;
+
+  const items=[];
+  // cell edges
+  if (show.cell) cells.forEach(cl=>{ const pr=cl.corners.map(c=>{const q=ap([c[0]-center[0],c[1]-center[1],c[2]-center[2]]); return {sx:cx+q[0]*fit,sy:cy-q[1]*fit,z:q[2]};});
+    CELL_EDGES.forEach(([i,j])=>items.push({kind:"cell",z:(pr[i].z+pr[j].z)/2,pa:pr[i],pb:pr[j],col:cl.col,layer:0})); });
+  bonds.forEach(bd=>{ if(!vis(bd)) return; const pa=proj[bd.a],pb=proj[bd.b];
+    items.push({kind:"bond",z:(pa.z+pb.z)/2,pa,pb,bd,layer:bd.matched?1:0}); });
+  atoms.forEach((a,i)=>{ if(!vis(a)) return; items.push({kind:"atom",z:proj[i].z,p:proj[i],at:a,layer:a.matched?1:0}); });
+  // matched in a second pass (layer 1) so it is never hidden behind nearer unmatched atoms
+  items.sort((u,v)=> (u.layer-v.layer) || (u.z-v.z));
+
+  for(const it of items){
+    const d=depth(it.z), shade=0.4+0.6*d, fog=0.55+0.45*d;
+    if(it.kind==="cell"){
+      ctx.strokeStyle=rgba(mix(it.col,[10,12,18],1-fog), 0.55*fog); ctx.lineWidth=1.1*dpr;
+      ctx.setLineDash([5*dpr,4*dpr]); ctx.beginPath(); ctx.moveTo(it.pa.sx,it.pa.sy); ctx.lineTo(it.pb.sx,it.pb.sy); ctx.stroke(); ctx.setLineDash([]);
+    } else if(it.kind==="bond"){
+      const ka=atoms[it.bd.a], kb=atoms[it.bd.b], isA=it.bd.role==="A";
+      const w=(isA?3.0:1.9)*dpr*(0.6+0.4*d)*Math.sqrt(scale), al=isA?0.95:0.62;
+      const ca=mix(atomFill(ka),[8,10,16],1-shade), cb=mix(atomFill(kb),[8,10,16],1-shade);
+      const mx=(it.pa.sx+it.pb.sx)/2, my=(it.pa.sy+it.pb.sy)/2;
+      ctx.lineWidth=w; ctx.lineCap="round";
+      ctx.strokeStyle=rgba(ca,al); ctx.beginPath(); ctx.moveTo(it.pa.sx,it.pa.sy); ctx.lineTo(mx,my); ctx.stroke();
+      ctx.strokeStyle=rgba(cb,al); ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(it.pb.sx,it.pb.sy); ctx.stroke();
+    } else {
+      const at=it.at, isA=at.role==="A", base=mix(atomFill(at),[8,10,16],1-shade);
+      const r=elemRadius(at.el)*fit*0.40*(0.72+0.56*d), sx=it.p.sx, sy=it.p.sy;
+      const al = at.matched ? (isA?1.0:0.88) : (isA?0.70:0.60);   // matched vivid; unmatched muted (A grey / B beige)
+      if(at.matched){                                             // soft green glow so matches read against the muted field
+        const g2=ctx.createRadialGradient(sx,sy,r*0.4, sx,sy,r*2.3);
+        g2.addColorStop(0,rgba(MATCH,0.24*fog)); g2.addColorStop(1,rgba(MATCH,0));
+        ctx.beginPath(); ctx.arc(sx,sy,r*2.3,0,6.2832); ctx.fillStyle=g2; ctx.fill();
+      }
+      const hi=mix(base,[255,255,255],0.7), lo=mix(base,[0,0,0],0.45);
+      const grd=ctx.createRadialGradient(sx-r*0.36,sy-r*0.36,r*0.08, sx,sy,r);
+      grd.addColorStop(0,rgba(hi,al)); grd.addColorStop(0.45,rgba(base,al)); grd.addColorStop(1,rgba(lo,al));
+      ctx.beginPath(); ctx.arc(sx,sy,r,0,6.2832); ctx.fillStyle=grd; ctx.fill();
+      if(isA){ ctx.lineWidth=0.9*dpr; ctx.strokeStyle=rgba([6,8,14],0.8); ctx.stroke(); }  // outline keeps the reference legible
+    }
+  }
+}
+
+// ---- Interaction -------------------------------------------------------
+let drag=false, lx=0, ly=0;
+cv.addEventListener("pointerdown", e=>{ drag=true; lx=e.clientX; ly=e.clientY; cv.setPointerCapture(e.pointerId); spin=false; updateSpinBtn(); });
+cv.addEventListener("pointermove", e=>{ if(!drag) return; const dx=(e.clientX-lx)/180, dy=(e.clientY-ly)/180; lx=e.clientX; ly=e.clientY; rot=mul(mul(rotY(dx),rotX(dy)),rot); draw(); });
+cv.addEventListener("pointerup", ()=>drag=false);
+cv.addEventListener("pointercancel", ()=>drag=false);
+cv.addEventListener("wheel", e=>{ e.preventDefault(); scale*=Math.exp(-e.deltaY*0.0012); scale=Math.min(10,Math.max(0.2,scale)); draw(); }, {passive:false});
+
+$("t-a").onchange=e=>{show.a=e.target.checked;draw();};
+$("t-b").onchange=e=>{show.b=e.target.checked;draw();};
+$("t-matched").onchange=e=>{show.matchedOnly=e.target.checked;draw();};
+$("t-cell").onchange=e=>{show.cell=e.target.checked;draw();};
+$("seg-color").querySelectorAll("button").forEach(btn=>btn.onclick=()=>{
+  colorMode=btn.dataset.mode; $("seg-color").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===btn));
+  $("sw-a").style.background = colorMode==="ab" ? "var(--a)" : "#9aa6b8";
+  $("sw-b").style.borderColor = colorMode==="ab" ? "var(--b)" : "var(--green)";
+  renderLegend(); draw();
+});
+function home(){ rot=mul(rotX(-0.42),rotY(0.5)); scale=1; draw(); }
+$("b-reset").onclick=home;
+
+// ---- Autospin ----------------------------------------------------------
+const reduce=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let spin=!reduce;
+function updateSpinBtn(){ $("b-spin").textContent = spin ? "Pause spin" : "Play spin"; }
+$("b-spin").onclick=()=>{ spin=!spin; updateSpinBtn(); };
+function tick(){ if(spin && !drag){ rot=mul(rotY(0.0035),rot); draw(); } requestAnimationFrame(tick); }
+home(); resize(); updateSpinBtn();
+if(!reduce) requestAnimationFrame(tick);
+</script>
